@@ -36,6 +36,7 @@ import java.awt.Insets;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseListener;
+import java.io.File;
 
 import javax.swing.BoxLayout;
 import java.awt.GridLayout;
@@ -44,11 +45,15 @@ import javax.swing.JTextPane;
 import java.awt.Dimension;
 import javax.swing.JSpinner;
 import javax.swing.JComboBox;
+import javax.swing.JFileChooser;
+import javax.swing.ScrollPaneConstants;
+import javax.swing.Box;
 
 public class SwingMain extends JFrame {
 
 	private JPanel contentPane;
-	private JTextField textField;
+//	private JTextField textPane_1;
+	private JTextPane textPane_1;
 	private Instances instances;
 	private Instances dataset = null;
 	private Instances filteredDataset = null;
@@ -56,10 +61,25 @@ public class SwingMain extends JFrame {
 	JComboBox comboBox;
 	
 	private StringToWordVector filter;
+	
 	private FilteredClassifier fcNaiveBayes = null;
+	private Evaluation eval_NB = null;
+	private NaiveBayes treeNB = null;
+	
 	private FilteredClassifier fcJ48 = null;
+	private Evaluation eval_J48 = null;
+	private J48 treeJ48 = null;
+	
 	private Vote voter = null;
+	private Evaluation eval_voter = null;
+	private Classifier[] classifiers = {				
+			new BayesNet(),
+			new NaiveBayesMultinomial()
+	};
+	
 	private FilteredClassifier fcSMO = null;
+	private Evaluation eval_fcSMO = null;
+	private SMO treeSMO = null;
 	
 	private String[] availableClassifiers = { "NaiveBayes", "Voting", "J48",
 		      "SMO" };
@@ -90,61 +110,94 @@ public class SwingMain extends JFrame {
 		setTitle("Detect spam");
 		setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		setBounds(100, 100, 450, 300);
-		setSize(450, 400);
+		//450, 400
+		setSize(1024, 768);
 		contentPane = new JPanel();
 		contentPane.setBorder(new EmptyBorder(5, 5, 5, 5));
 		setContentPane(contentPane);
 		contentPane.setLayout(null);
 		
 		JLabel lblLoadTrainingDataset = new JLabel("Load Training Dataset");
-		lblLoadTrainingDataset.setBounds(67, 16, 144, 16);
+		lblLoadTrainingDataset.setBounds(303, 32, 144, 16);
 		contentPane.add(lblLoadTrainingDataset);
+		
+		JScrollPane scrollPane = new JScrollPane();
+		scrollPane.setBounds(26, 135, 418, 335);
+		contentPane.add(scrollPane);
+		
+		textPane = new JTextPane();
+		textPane.setToolTipText("Evaluation Summary");
+		textPane.setEditable(false);
+		scrollPane.setViewportView(textPane);
+		
+		JScrollPane scrollPane_1 = new JScrollPane();
+		scrollPane_1.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_ALWAYS);
+		scrollPane_1.setBounds(469, 135, 534, 540);
+		contentPane.add(scrollPane_1);
+		
+		JTextPane textPane_2 = new JTextPane();
+		textPane_2.setEditable(false);
+		scrollPane_1.setViewportView(textPane_2);
 		
 		JButton btnLoad = new JButton("Load");
 		btnLoad.setToolTipText("Click to load spamham.arff");
-		btnLoad.setBounds(238, 11, 117, 29);
+		btnLoad.setBounds(469, 27, 117, 29);
 		btnLoad.addActionListener(new ActionListener() {
 			
 			@Override
 			public void actionPerformed(ActionEvent e) {
-				if(dataset == null){
+				File selectedFile = null;
+//				if(dataset == null){
 					DataSource source;
-					try {
-						source = new DataSource("/Users/amaryadav/Desktop/spamham.arff");
-						dataset = source.getDataSet();
-						//set class index to the last attribute
-						dataset.setClassIndex(dataset.numAttributes()-1);
-						filter = new StringToWordVector();
-						filter.setInputFormat(dataset);
-						filter.setIDFTransform(true);
-						filter.setTFTransform(true);
-						filter.setOutputWordCounts(true);
-						IteratedLovinsStemmer stemmer = new IteratedLovinsStemmer();
-						filter.setStemmer(stemmer);
-						filter.setLowerCaseTokens(true);
-						filteredDataset = Filter.useFilter(dataset, filter);
-					} catch (Exception e1) {
-						textPane.setText(e1.getMessage());
-						e1.printStackTrace();
-						return;
+					JFileChooser fileChooser = new JFileChooser();
+					fileChooser.setCurrentDirectory(new File(System.getProperty("user.home")));
+					int result = fileChooser.showOpenDialog(SwingMain.this);
+					if (result == JFileChooser.APPROVE_OPTION) {
+					    // user selects a file
+						try {
+							selectedFile = fileChooser.getSelectedFile();
+							source = new DataSource(selectedFile.getAbsolutePath());
+//							source = new DataSource("/Users/amaryadav/Desktop/spamham.arff");
+							dataset = source.getDataSet();
+							//set class index to the last attribute
+							dataset.setClassIndex(dataset.numAttributes()-1);
+							filter = new StringToWordVector();
+							filter.setInputFormat(dataset);
+							filter.setIDFTransform(true);
+							filter.setTFTransform(true);
+							filter.setOutputWordCounts(true);
+							IteratedLovinsStemmer stemmer = new IteratedLovinsStemmer();
+							filter.setStemmer(stemmer);
+							filter.setLowerCaseTokens(true);
+							filteredDataset = Filter.useFilter(dataset, filter);
+							JOptionPane.showMessageDialog(null, selectedFile.getName() + " was successfully loaded");
+						} catch (Exception e1) {
+							JOptionPane.showMessageDialog(null, e1.getMessage());
+							e1.printStackTrace();
+							return;
+						}
+						
+						fcNaiveBayes = null;
+						voter = null;
+						fcJ48 = null;
+						fcSMO = null;
+						
+						textPane.setText("");
+						textPane_2.setText("");
 					}
-				}
-
-				textPane.setText("Loading spamham.arff was successful!");
-//				JOptionPane.showMessageDialog(frame, "This is the message...", "Title");
-				
+//				}				
 			}
 		});
 		contentPane.add(btnLoad);
 		
 		JButton btnNaivebayes = new JButton("NaiveBayes");
-		btnNaivebayes.setBounds(6, 68, 117, 29);
+		btnNaivebayes.setBounds(469, 68, 128, 55);
 		btnNaivebayes.addActionListener(new ActionListener() {
 			
 			@Override
 			public void actionPerformed(ActionEvent e) {
 				if(dataset!=null && fcNaiveBayes == null){
-					NaiveBayes tree = new NaiveBayes();
+					treeNB = new NaiveBayes();
 					
 					StringToWordVector filter = new StringToWordVector();
 					try {
@@ -160,7 +213,7 @@ public class SwingMain extends JFrame {
 					filter.setStemmer(stemmer);
 					fcNaiveBayes = new FilteredClassifier();
 					fcNaiveBayes.setFilter(filter);
-					fcNaiveBayes.setClassifier(tree);
+					fcNaiveBayes.setClassifier(treeNB);
 					try {
 						fcNaiveBayes.buildClassifier(dataset);
 					} catch (Exception e1) {
@@ -171,10 +224,22 @@ public class SwingMain extends JFrame {
 						
 						Evaluation eval = new Evaluation(dataset);
 						eval.evaluateModel(fcNaiveBayes, dataset);
-						textPane.setText(tree+"\n\n==================================================\n\n"+eval.toSummaryString()+"==================================================\n\n"+eval.toMatrixString());
+						eval_NB = eval;
+						textPane.setText(eval_NB.toSummaryString()+"\n"+eval_NB.toMatrixString());
+						textPane_2.setText(treeNB+"");
 					} catch (Exception e1) {
 						e1.printStackTrace();
 					}
+				}else if(dataset == null){
+					JOptionPane.showMessageDialog(null, "Load dataset first!");
+				}else{
+					try {
+						textPane.setText(eval_NB.toSummaryString()+"\n"+eval_NB.toMatrixString());
+					} catch (Exception e1) {
+						// TODO Auto-generated catch block
+						e1.printStackTrace();
+					}
+					textPane_2.setText(treeNB+"");
 				}
 				
 			}
@@ -182,13 +247,13 @@ public class SwingMain extends JFrame {
 		contentPane.add(btnNaivebayes);
 		
 		JButton btnJ = new JButton("J48");
-		btnJ.setBounds(245, 68, 81, 29);
+		btnJ.setBounds(768, 68, 106, 55);
 		btnJ.addActionListener(new ActionListener() {
 			
 			@Override
 			public void actionPerformed(ActionEvent e) {
 				if(dataset!=null && fcJ48 == null){
-					J48 tree = new J48();
+					treeJ48 = new J48();
 					
 					StringToWordVector filter = new StringToWordVector();
 					try {
@@ -206,7 +271,7 @@ public class SwingMain extends JFrame {
 
 					fcJ48 = new FilteredClassifier();
 					fcJ48.setFilter(filter);
-					fcJ48.setClassifier(tree);
+					fcJ48.setClassifier(treeJ48);
 					try {
 						fcJ48.buildClassifier(dataset);
 					} catch (Exception e1) {
@@ -217,8 +282,20 @@ public class SwingMain extends JFrame {
 					try {	
 						Evaluation eval = new Evaluation(dataset);
 						eval.evaluateModel(fcJ48, dataset);
-						textPane.setText(tree+"\n\n==================================================\n\n"+eval.toSummaryString()+"==================================================\n\n"+eval.toMatrixString());
+						eval_J48 = eval;
+						textPane.setText(eval_J48.toSummaryString()+"\n"+eval_J48.toMatrixString());
+						textPane_2.setText(treeJ48.graph());
 					} catch (Exception e1) {
+						e1.printStackTrace();
+					}
+				}else if(dataset == null){
+					JOptionPane.showMessageDialog(null, "Load dataset first!");
+				}else{
+					try {
+						textPane.setText(eval_J48.toSummaryString()+"\n"+eval_J48.toMatrixString());
+						textPane_2.setText(treeJ48.graph());
+					} catch (Exception e1) {
+						// TODO Auto-generated catch block
 						e1.printStackTrace();
 					}
 				}
@@ -227,18 +304,13 @@ public class SwingMain extends JFrame {
 		contentPane.add(btnJ);
 		
 		JButton btnVotin = new JButton("Voting");
-		btnVotin.setBounds(124, 68, 117, 29);
+		btnVotin.setBounds(619, 68, 128, 55);
 		btnVotin.addActionListener(new ActionListener() {
 			
 			@Override
 			public void actionPerformed(ActionEvent e) {
 				// TODO Auto-generated method stub
 				if(filteredDataset!=null && voter == null){
-					Classifier[] classifiers = {				
-							new BayesNet(),
-							new NaiveBayesMultinomial()
-					};
-					
 					voter = new Vote();
 					voter.setClassifiers(classifiers);//needs one or more classifiers
 					try {
@@ -252,8 +324,20 @@ public class SwingMain extends JFrame {
 					try {	
 						Evaluation eval = new Evaluation(filteredDataset);
 						eval.evaluateModel(voter, filteredDataset);
-						textPane.setText("\n\n==================================================\n\n"+eval.toSummaryString()+"==================================================\n\n"+eval.toMatrixString());
+						eval_voter = eval;
+						textPane.setText(eval_voter.toSummaryString()+"\n"+eval.toMatrixString());
+						textPane_2.setText(classifiers[0].toString()+"\n\n=========================================\n\n"+classifiers[1].toString());
 					} catch (Exception e1) {
+						e1.printStackTrace();
+					}
+				}else if(dataset == null){
+					JOptionPane.showMessageDialog(null, "Load dataset first!");
+				}else{
+					try {
+						textPane.setText(eval_voter.toSummaryString()+"\n"+eval_voter.toMatrixString());
+						textPane_2.setText(classifiers[0].toString()+"\n\n=========================================\n\n"+classifiers[1].toString());
+					} catch (Exception e1) {
+						// TODO Auto-generated catch block
 						e1.printStackTrace();
 					}
 				}
@@ -262,14 +346,14 @@ public class SwingMain extends JFrame {
 		contentPane.add(btnVotin);
 		
 		JButton btnSmo = new JButton("SMO");
-		btnSmo.setBounds(327, 68, 117, 29);
+		btnSmo.setBounds(897, 68, 106, 55);
 		btnSmo.addActionListener(new ActionListener() {
 			
 			@Override
 			public void actionPerformed(ActionEvent e) {
 				// TODO Auto-generated method stub
 				if(dataset!=null && fcSMO == null){
-					SMO tree = new SMO();
+					treeSMO = new SMO();
 					StringToWordVector filter = new StringToWordVector();
 					try {
 						filter.setInputFormat(dataset);
@@ -285,7 +369,7 @@ public class SwingMain extends JFrame {
 					
 					fcSMO = new FilteredClassifier();
 					fcSMO.setFilter(filter);
-					fcSMO.setClassifier(tree);
+					fcSMO.setClassifier(treeSMO);
 					try {
 						fcSMO.buildClassifier(dataset);
 					} catch (Exception e1) {
@@ -296,26 +380,49 @@ public class SwingMain extends JFrame {
 					try {	
 						Evaluation eval = new Evaluation(dataset);
 						eval.evaluateModel(fcSMO, dataset);
-						textPane.setText(tree+"\n\n==================================================\n\n"+eval.toSummaryString()+"==================================================\n\n"+eval.toMatrixString());
+						eval_fcSMO = eval;
+						textPane.setText(eval_fcSMO.toSummaryString() + "\n" + eval_fcSMO.toMatrixString());
+						textPane_2.setText(treeSMO+"");
 					} catch (Exception e1) {
 						e1.printStackTrace();
 					}
+				}else if(dataset == null){
+					JOptionPane.showMessageDialog(null, "Load dataset first!");
+				}else{ //dataset!=null && fcSMO != null
+					try {
+						textPane.setText(eval_fcSMO.toSummaryString() + "\n" + eval_fcSMO.toMatrixString());
+						textPane_2.setText(treeSMO+"");
+					} catch (Exception e1) {
+						// TODO Auto-generated catch block
+						e1.printStackTrace();
+					}				
 				}
 			}
 		});
 		contentPane.add(btnSmo);
 		
-		JScrollPane scrollPane = new JScrollPane();
-		scrollPane.setBounds(16, 109, 416, 104);
-		contentPane.add(scrollPane);
+		JLabel lblEnterTextTo = new JLabel("Enter text to classify");
+		lblEnterTextTo.setBounds(35, 490, 138, 16);
+		contentPane.add(lblEnterTextTo);
 		
-		textPane = new JTextPane();
-		textPane.setToolTipText("Evaluation Summary");
-		textPane.setEditable(false);
-		scrollPane.setViewportView(textPane);
+		comboBox = new JComboBox();
+		comboBox.setBounds(26, 652, 197, 27);
+		for(int i = 0; i<availableClassifiers.length; i++){
+			comboBox.addItem(availableClassifiers[i]);
+		}
+
+		contentPane.add(comboBox);
+		
+		JScrollPane scrollPane_2 = new JScrollPane();
+		scrollPane_2.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+		scrollPane_2.setBounds(26, 522, 418, 107);
+		contentPane.add(scrollPane_2);
+		
+		JTextPane textPane_1_1 = new JTextPane();
+		scrollPane_2.setViewportView(textPane_1_1);
 		
 		JButton btnGo = new JButton("GO");
-		btnGo.setBounds(315, 322, 117, 29);
+		btnGo.setBounds(284, 651, 117, 29);
 		btnGo.addActionListener(new ActionListener() {
 			
 			@Override
@@ -324,14 +431,14 @@ public class SwingMain extends JFrame {
 				switch(comboBox.getSelectedIndex()){
 				case 0:
 					if(fcNaiveBayes != null){
-						if(textField.getText() != ""){
-							makeInstance(textField.getText());
+						if(textPane_1_1.getText() != ""){
+							makeInstance(textPane_1_1.getText());
 							try {
 								Double val = fcNaiveBayes.classifyInstance(instances.firstInstance());
 								if(val == 0){
-									textPane.setText("NOT SPAM :)");
+									JOptionPane.showMessageDialog(null," NOT SPAM (-__-) ");
 								}else if(val == 1){
-									textPane.setText("SPAM DETECTED! *__*");
+									JOptionPane.showMessageDialog(null," SPAM DETECTED (*__*) ");
 								}
 							} catch (Exception e1) {
 								// TODO Auto-generated catch block
@@ -339,20 +446,20 @@ public class SwingMain extends JFrame {
 							}
 						}
 					}else{
-						textPane.setText("Train NaiveBayes first!");
+						JOptionPane.showMessageDialog(null," Train NaiveBayes first! ");
 					}
 					break;
 				case 1:
 					if(voter != null){
-						if(textField.getText() != ""){
-							makeInstance(textField.getText());
+						if(textPane_1_1.getText() != ""){
+							makeInstance(textPane_1_1.getText());
 							try {
 								Instances filteredInstance = Filter.useFilter(instances, filter);
 								Double val = voter.classifyInstance(filteredInstance.firstInstance());
 								if(val == 0){
-									textPane.setText("NOT SPAM :)");
+									JOptionPane.showMessageDialog(null," NOT SPAM (-__-) ");
 								}else if(val == 1){
-									textPane.setText("SPAM DETECTED! *__*");
+									JOptionPane.showMessageDialog(null," SPAM DETECTED (*__*) ");
 								}
 							} catch (Exception e1) {
 								// TODO Auto-generated catch block
@@ -360,19 +467,19 @@ public class SwingMain extends JFrame {
 							}
 						}
 					}else{
-						textPane.setText("Train voter first!");
+						JOptionPane.showMessageDialog(null," Train Voting Classifier first! ");
 					}
 					break;
 				case 2:
 					if(fcJ48 != null){
-						if(textField.getText() != ""){
-							makeInstance(textField.getText());
+						if(textPane_1_1.getText() != ""){
+							makeInstance(textPane_1_1.getText());
 							try {
 								Double val = fcJ48.classifyInstance(instances.firstInstance());
 								if(val == 0){
-									textPane.setText("NOT SPAM :)");
+									JOptionPane.showMessageDialog(null," NOT SPAM (-__-) ");
 								}else if(val == 1){
-									textPane.setText("SPAM DETECTED! *__*");
+									JOptionPane.showMessageDialog(null," SPAM DETECTED (*__*) ");
 								}
 							} catch (Exception e1) {
 								// TODO Auto-generated catch block
@@ -380,19 +487,19 @@ public class SwingMain extends JFrame {
 							}
 						}
 					}else{
-						textPane.setText("Train J48 first!");
+						JOptionPane.showMessageDialog(null," Train J48 first! ");
 					}
 					break;
 				case 3:
 					if(fcSMO != null){
-						if(textField.getText() != ""){
-							makeInstance(textField.getText());
+						if(textPane_1_1.getText() != ""){
+							makeInstance(textPane_1_1.getText());
 							try {
 								Double val = fcSMO.classifyInstance(instances.firstInstance());
 								if(val == 0){
-									textPane.setText("NOT SPAM :)");
+									JOptionPane.showMessageDialog(null," NOT SPAM (-__-) ");
 								}else if(val == 1){
-									textPane.setText("SPAM DETECTED! *__*");
+									JOptionPane.showMessageDialog(null," SPAM DETECTED (*__*) ");
 								}
 							} catch (Exception e1) {
 								// TODO Auto-generated catch block
@@ -400,7 +507,7 @@ public class SwingMain extends JFrame {
 							}
 						}
 					}else{
-						textPane.setText("Train SMO first!");
+						JOptionPane.showMessageDialog(null," Train SMO first! ");
 					}
 					break;
 				default:
@@ -410,22 +517,10 @@ public class SwingMain extends JFrame {
 		});
 		contentPane.add(btnGo);
 		
-		textField = new JTextField();
-		textField.setBounds(183, 226, 249, 70);
-		contentPane.add(textField);
-		textField.setColumns(10);
+		JLabel lblClickToTrain = new JLabel("Click to train classifiers");
+		lblClickToTrain.setBounds(288, 86, 150, 16);
+		contentPane.add(lblClickToTrain);
 		
-		JLabel lblEnterTextTo = new JLabel("Enter text to classify");
-		lblEnterTextTo.setBounds(19, 238, 138, 16);
-		contentPane.add(lblEnterTextTo);
-		
-		comboBox = new JComboBox();
-		comboBox.setBounds(16, 323, 197, 27);
-		for(int i = 0; i<availableClassifiers.length; i++){
-			comboBox.addItem(availableClassifiers[i]);
-		}
-
-		contentPane.add(comboBox);
 	}
 	
 	public void makeInstance(String text) {
